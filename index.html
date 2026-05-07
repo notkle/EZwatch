@@ -352,14 +352,20 @@ async function initFFmpeg() {
     const hasFullURL   = mainText.includes('814');
     console.log('[EZ9] Worker ref check — double-quoted:', has814double, 'single-quoted:', has814single, 'bare:', has814bare, 'any 814:', hasFullURL);
 
-    // Replace however the worker is referenced
-    mainText = mainText.split('"814.ffmpeg.js"').join(JSON.stringify(workerBlobURL));
-    mainText = mainText.split("'814.ffmpeg.js'").join(JSON.stringify(workerBlobURL));
-    // Also try replacing the full unpkg absolute URL pattern
-    const workerAbsURL = resolvedURL.replace('ffmpeg.js', '814.ffmpeg.js');
-    console.log('[EZ9b] Also replacing absolute URL:', workerAbsURL);
-    mainText = mainText.split(JSON.stringify(workerAbsURL)).join(JSON.stringify(workerBlobURL));
-    mainText = mainText.split(workerAbsURL).join(workerBlobURL);
+    // The bundle uses webpack's dynamic chunk system: new Worker(new URL(e.p+e.u(814),e.b))
+    // e.p = publicPath, e.u(814) = chunk filename, e.b = base URL — all computed at runtime.
+    // We can't patch string literals because there are none.
+    // Instead: replace the entire new Worker(...) expression with one using our blob URL.
+    // The pattern is always: new Worker(new URL(e.p+e.u(814),e.b),{type:void 0})
+    const workerPattern = /new Worker\(new URL\([^)]+\(814\)[^)]*\),\{type:void 0\}\)/;
+    const workerReplacement = `new Worker(${JSON.stringify(workerBlobURL)},{type:'classic'})`;
+    const beforePatch = mainText;
+    mainText = mainText.replace(workerPattern, workerReplacement);
+    console.log('[EZ9b] Worker expression patched:', mainText !== beforePatch);
+    if (mainText === beforePatch) {
+      // Log the exact snippet so we can refine the regex
+      console.warn('[EZ9c] Pattern did not match. Snippet:', beforePatch.slice(beforePatch.indexOf('new Worker'), beforePatch.indexOf('new Worker')+120));
+    }
 
     // 3. Execute patched bundle
     console.log('[EZ10] Creating patched blob and injecting script tag...');
