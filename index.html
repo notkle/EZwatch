@@ -335,12 +335,15 @@ async function initFFmpeg() {
     mainText = mainText.split("'814.ffmpeg.js'").join(JSON.stringify(workerBlobURL));
 
     // 3. Execute the patched bundle (defines window.FFmpegWASM)
+    // Note: do NOT revoke the blob URL in onload — the script needs it to remain
+    // valid while its internal module references finish resolving.
+    // We leave both blob URLs alive for the session (tiny memory cost, ~50KB total).
     const patchedURL = URL.createObjectURL(new Blob([mainText], {type:'text/javascript'}));
     await new Promise((res, rej) => {
       const s = document.createElement('script');
       s.src = patchedURL;
-      s.onload  = () => { URL.revokeObjectURL(patchedURL); res(); };
-      s.onerror = (e) => { URL.revokeObjectURL(patchedURL); rej(new Error('Patched ffmpeg.js failed to load')); };
+      s.onload  = () => res();
+      s.onerror = (e) => rej(new Error('Patched ffmpeg.js failed to load'));
       document.head.appendChild(s);
     });
 
