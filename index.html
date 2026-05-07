@@ -279,7 +279,7 @@
 <div id="toast"></div>
 <input type="file" id="file-input" multiple accept="video/*" style="display:none" />
 
-<!-- ffmpeg.wasm + util from CDN. The classWorkerURL points to our self-hosted copy. -->
+<!-- ffmpeg.wasm + util. Single-thread core — no SharedArrayBuffer or same-origin worker needed. -->
 <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
 <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 
@@ -318,12 +318,6 @@ let ffmpegLoading = false;
 async function initFFmpeg() {
   if (ffmpegReady || ffmpegLoading) return;
 
-  // Check cross-origin isolation (required for SharedArrayBuffer / ffmpeg.wasm)
-  if (!window.crossOriginIsolated) {
-    console.warn('EZwatch: crossOriginIsolated is false — subtitle extraction unavailable. Is coi-serviceworker.js in your repo?');
-    return;
-  }
-
   ffmpegLoading = true;
   document.getElementById('ffmpeg-banner').classList.add('visible');
 
@@ -336,13 +330,14 @@ async function initFFmpeg() {
 
     ffmpeg = new FFmpegClass();
 
-    // Core WASM files load fine from CDN via toBlobURL (they're just fetched as blobs)
+    
     // classWorkerURL MUST be same-origin — points to ffmpeg-worker.js in your repo
+    // Single-thread core: no SharedArrayBuffer needed, no worker origin issues.
+    // Perfectly adequate for subtitle demuxing — we're not transcoding video.
     const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
     await ffmpeg.load({
-      coreURL:        await toBlobURL(`${coreBase}/ffmpeg-core.js`,   'text/javascript'),
-      wasmURL:        await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
-      classWorkerURL: './ffmpeg-worker.js',  // ← must be in your repo, same origin
+      coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`,   'text/javascript'),
+      wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
     });
 
     ffmpegReady = true;
