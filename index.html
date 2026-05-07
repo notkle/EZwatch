@@ -402,6 +402,15 @@ async function initFFmpeg() {
     ffmpegReady = true;
     document.getElementById('ffmpeg-banner').classList.remove('visible');
     showToast('Subtitle engine ready ✓', 'var(--accent)');
+
+    // If a video is already playing when the engine finishes loading, re-trigger extraction
+    if (currentEp) {
+      const ep = library[currentEp.showKey]?.episodes[currentEp.epIndex];
+      if (ep) {
+        console.log('[SUB] Engine loaded after playback started — re-triggering extraction for:', ep.name);
+        extractAndApplySubs(currentEp.showKey, ep);
+      }
+    }
   } catch(e) {
     console.warn('ffmpeg.wasm load failed:', e);
     document.getElementById('ffmpeg-banner').classList.remove('visible');
