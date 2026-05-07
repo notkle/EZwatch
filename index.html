@@ -568,6 +568,7 @@ async function extractSubtitles(file) {
     ffmpeg.on('log',logH);
     try{await ffmpeg.exec(['-i',inName]);}catch(e){/* expected */}
     ffmpeg.off('log',logH);
+    console.log('[SUB] ffmpeg probe output:\n', probe);
 
     const re=/Stream #0:(\d+)(?:\((\w+)\))?: Subtitle: (\w+)/g;
     let m;
@@ -734,6 +735,7 @@ async function extractAndApplySubs(sKey,ep){
   let extracted=[];
   if(ffmpegReady) extracted=await extractSubtitles(ep.file);
   else if(!ffmpegLoading){await initFFmpeg();if(ffmpegReady)extracted=await extractSubtitles(ep.file);}
+  console.log('[SUB] Extracted tracks:', extracted.length, extracted.map(t=>`${t.label} [${t.type}] lang=${t.lang} datalen=${t.data?.length}`));
   await populateSubSelect(sKey,extracted);
 }
 
