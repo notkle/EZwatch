@@ -279,8 +279,7 @@
 <div id="toast"></div>
 <input type="file" id="file-input" multiple accept="video/*" style="display:none" />
 
-<!-- ffmpeg.wasm + util. Single-thread core — no SharedArrayBuffer or same-origin worker needed. -->
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<!-- ffmpeg util only — we load ffmpeg.js manually as a patched blob to fix worker origin -->
 <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
 
 <script>
@@ -310,6 +309,8 @@ const dbGet   = (s,k) => new Promise((r,j)=>{ const q=idbTx(s).get(k);          
 const dbGetAll= (s)   => new Promise((r,j)=>{ const q=idbTx(s).getAll();           q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
 
 // ── ffmpeg.wasm ──
+// The UMD bundle hardcodes a cross-origin worker URL which breaks on GitHub Pages.
+// Fix: fetch ffmpeg.js as text, patch the worker blob URL to be same-origin, then run it.
 let ffmpeg      = null;
 let _fetchFile  = null;
 let ffmpegReady = false;
@@ -317,23 +318,40 @@ let ffmpegLoading = false;
 
 async function initFFmpeg() {
   if (ffmpegReady || ffmpegLoading) return;
-
   ffmpegLoading = true;
   document.getElementById('ffmpeg-banner').classList.add('visible');
 
   try {
+    // 1. Fetch the worker chunk and wrap it as a same-origin blob URL
+    const workerResp    = await fetch('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js');
+    const workerText    = await workerResp.text();
+    const workerBlobURL = URL.createObjectURL(new Blob([workerText], {type:'text/javascript'}));
+
+    // 2. Fetch ffmpeg.js, patch all references to the worker chunk filename
+    const mainResp = await fetch('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+    let   mainText = await mainResp.text();
+    // The bundle references the worker as a bare filename — replace with our blob URL
+    mainText = mainText.split('"814.ffmpeg.js"').join(JSON.stringify(workerBlobURL));
+    mainText = mainText.split("'814.ffmpeg.js'").join(JSON.stringify(workerBlobURL));
+
+    // 3. Execute the patched bundle (defines window.FFmpegWASM)
+    const patchedURL = URL.createObjectURL(new Blob([mainText], {type:'text/javascript'}));
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = patchedURL;
+      s.onload  = () => { URL.revokeObjectURL(patchedURL); res(); };
+      s.onerror = (e) => { URL.revokeObjectURL(patchedURL); rej(new Error('Patched ffmpeg.js failed to load')); };
+      document.head.appendChild(s);
+    });
+
+    // 4. Resolve globals now the patched bundle has run
     const FFmpegClass = window.FFmpegWASM?.FFmpeg ?? window.FFmpeg?.FFmpeg ?? window.FFmpeg;
     const toBlobURL   = window.FFmpegUtil?.toBlobURL ?? window.toBlobURL;
     _fetchFile        = window.FFmpegUtil?.fetchFile  ?? window.fetchFile;
+    if (!FFmpegClass || !toBlobURL || !_fetchFile) throw new Error('ffmpeg globals not found after load');
 
-    if (!FFmpegClass || !toBlobURL || !_fetchFile) throw new Error('ffmpeg globals not found');
-
+    // 5. Load single-thread core (no SharedArrayBuffer needed, no worker origin issues)
     ffmpeg = new FFmpegClass();
-
-    
-    // classWorkerURL MUST be same-origin — points to ffmpeg-worker.js in your repo
-    // Single-thread core: no SharedArrayBuffer needed, no worker origin issues.
-    // Perfectly adequate for subtitle demuxing — we're not transcoding video.
     const coreBase = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
     await ffmpeg.load({
       coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`,   'text/javascript'),
