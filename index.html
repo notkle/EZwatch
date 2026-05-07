@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EZwatch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #13131a;
+      --surface2: #1c1c28;
+      --border:   #2a2a3a;
+      --accent:   #e8ff47;
+      --accent2:  #ff6b35;
+      --text:     #e8e8f0;
+      --muted:    #6b6b85;
+      --danger:   #ff4545;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; overflow: hidden; }
+
+    #app { display: grid; grid-template-rows: 52px 1fr; grid-template-columns: 300px 1fr; height: 100vh; }
+
+    /* TOPBAR */
+    #topbar { grid-column: 1/-1; display: flex; align-items: center; padding: 0 20px; gap: 12px; background: var(--surface); border-bottom: 1px solid var(--border); z-index: 10; }
+    #logo { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: var(--accent); line-height: 1; user-select: none; flex-shrink: 0; }
+    #logo span { color: var(--accent2); }
+    #now-playing-bar { flex: 1; display: flex; align-items: center; gap: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; min-width: 0; }
+    .np-label { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--accent); letter-spacing: 1px; white-space: nowrap; }
+    #now-playing-title { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    #sub-status { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+    #sub-status.extracting { color: var(--accent2); }
+    #sub-status.ready { color: var(--accent); }
+
+    #autoqueue-toggle { display: flex; align-items: center; gap: 7px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; user-select: none; flex-shrink: 0; transition: border-color .2s; }
+    #autoqueue-toggle.on { border-color: var(--accent); }
+    #autoqueue-toggle .aq-label { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); }
+    #autoqueue-toggle.on .aq-label { color: var(--accent); }
+
+    #playlist-btn { display: flex; align-items: center; gap: 7px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--text); transition: border-color .2s, color .2s; flex-shrink: 0; }
+    #playlist-btn.active { border-color: var(--accent2); color: var(--accent2); }
+    #playlist-count { background: var(--accent2); color: #0a0a0f; font-size: 10px; font-family: 'DM Mono', monospace; font-weight: 500; border-radius: 10px; padding: 1px 6px; display: none; }
+    #playlist-count.visible { display: inline-block; }
+    #add-files-btn { background: var(--accent); color: #0a0a0f; border: none; border-radius: 6px; padding: 7px 16px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 13px; cursor: pointer; transition: opacity .15s; white-space: nowrap; flex-shrink: 0; }
+    #add-files-btn:hover { opacity: .85; }
+
+    /* SIDEBAR */
+    #sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transition: background .2s; }
+    #sidebar.drag-over { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+    #sidebar-header { padding: 13px 16px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    #sidebar-header h2 { font-size: 10px; font-family: 'DM Mono', monospace; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+    #clear-all-btn { font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; transition: color .15s; }
+    #clear-all-btn:hover { color: var(--danger); }
+    #shows-list { flex: 1; overflow-y: auto; padding: 6px 0; }
+    #shows-list::-webkit-scrollbar { width: 4px; }
+    #shows-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .show-group { margin-bottom: 1px; }
+    .show-group-header { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; user-select: none; transition: background .1s; }
+    .show-group-header:hover { background: var(--surface2); }
+    .show-thumb { width: 34px; height: 34px; border-radius: 6px; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 13px; color: var(--accent); flex-shrink: 0; }
+    .show-info { flex: 1; min-width: 0; }
+    .show-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .show-count { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .add-all-btn { font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; font-family: 'DM Mono', monospace; padding: 2px 4px; transition: color .15s; flex-shrink: 0; }
+    .add-all-btn:hover { color: var(--accent2); }
+    .show-chevron { color: var(--muted); font-size: 10px; transition: transform .2s; flex-shrink: 0; }
+    .show-group.open .show-chevron { transform: rotate(90deg); }
+    .episodes-list { display: none; padding: 2px 0 4px 50px; }
+    .show-group.open .episodes-list { display: block; }
+    .episode-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px 5px 0; cursor: pointer; border-radius: 6px; margin-right: 6px; transition: background .1s; position: relative; }
+    .episode-item:hover { background: var(--surface2); }
+    .episode-item:hover .ep-add-btn { opacity: 1; }
+    .episode-item.active { background: var(--surface2); }
+    .episode-item.active::before { content: ''; position: absolute; left: -8px; top: 50%; transform: translateY(-50%); width: 3px; height: 60%; background: var(--accent); border-radius: 2px; }
+    .ep-num { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); min-width: 26px; text-align: right; flex-shrink: 0; }
+    .ep-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+    .ep-add-btn { opacity: 0; background: none; border: none; color: var(--accent2); font-size: 14px; cursor: pointer; padding: 0 4px; transition: opacity .15s, transform .1s; flex-shrink: 0; }
+    .ep-add-btn:hover { transform: scale(1.2); }
+    .ep-add-btn.in-queue { opacity: 1; color: var(--accent); font-size: 12px; }
+    #sidebar-empty { padding: 30px 16px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.9; }
+
+    /* MAIN */
+    #main { display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
+    /* DROP ZONE */
+    #drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 40px; position: relative; }
+    #drop-zone::before { content: ''; position: absolute; inset: 20px; border: 2px dashed var(--border); border-radius: 16px; pointer-events: none; transition: border-color .2s; }
+    #drop-zone.drag-active::before { border-color: var(--accent); }
+    .drop-icon { font-size: 56px; opacity: .25; }
+    .drop-title { font-family: 'Bebas Neue', sans-serif; font-size: 34px; letter-spacing: 3px; color: var(--muted); }
+    .drop-sub { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.7; max-width: 380px; }
+
+    /* PLAYER */
+    #player-view { flex: 1; display: none; flex-direction: column; background: #000; position: relative; }
+    #player-view.visible { display: flex; }
+
+    /* Video + subtitle canvas wrapper */
+    #video-wrapper { flex: 1; position: relative; background: #000; min-height: 0; overflow: hidden; }
+    #video-el { width: 100%; height: 100%; display: block; object-fit: contain; background: #000; }
+
+    /* libass canvas overlay — SubtitlesOctopus manages this itself */
+    #video-wrapper canvas {
+      position: absolute !important;
+      top: 0 !important; left: 0 !important;
+      width: 100% !important; height: 100% !important;
+      pointer-events: none;
+    }
+
+    /* Extraction overlay */
+    #extract-overlay {
+      position: absolute; inset: 0;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.55); z-index: 5; pointer-events: none;
+      flex-direction: column; gap: 12px;
+    }
+    #extract-overlay.visible { display: flex; }
+    .extract-spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent2); border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .extract-msg { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--accent2); letter-spacing: 1px; }
+
+    /* CONTROLS */
+    #controls { background: var(--surface); border-top: 1px solid var(--border); padding: 10px 20px 12px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+    #progress-row { display: flex; align-items: center; gap: 10px; }
+    #progress-bar { flex: 1; height: 4px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 2px; cursor: pointer; outline: none; }
+    #progress-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; transition: transform .1s; }
+    #progress-bar::-webkit-slider-thumb:hover { transform: scale(1.3); }
+    .time-label { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    #buttons-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .ctrl-btn { background: none; border: none; color: var(--text); cursor: pointer; padding: 6px 8px; border-radius: 6px; font-size: 16px; transition: background .1s, color .1s; line-height: 1; display: flex; align-items: center; justify-content: center; }
+    .ctrl-btn:hover { background: var(--surface2); color: var(--accent); }
+    #play-btn { font-size: 22px; }
+    .ctrl-spacer { flex: 1; }
+    #vol-row { display: flex; align-items: center; gap: 6px; }
+    #vol-slider { width: 76px; height: 4px; -webkit-appearance: none; appearance: none; background: var(--border); border-radius: 2px; cursor: pointer; outline: none; }
+    #vol-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--text); cursor: pointer; }
+    #speed-select, .track-select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 4px 8px; font-family: 'DM Mono', monospace; font-size: 12px; cursor: pointer; outline: none; }
+    .track-select { font-family: 'DM Sans', sans-serif; max-width: 160px; }
+    .ctrl-label { font-size: 10px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+    /* PLAYLIST DRAWER */
+    #playlist-drawer { position: fixed; top: 52px; right: 0; bottom: 0; width: 360px; background: var(--surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; transform: translateX(100%); transition: transform .28s cubic-bezier(.4,0,.2,1); z-index: 50; box-shadow: -8px 0 40px rgba(0,0,0,.6); }
+    #playlist-drawer.open { transform: translateX(0); }
+    #drawer-header { padding: 14px 16px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+    #drawer-title-row { display: flex; align-items: center; justify-content: space-between; }
+    #drawer-title { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px; color: var(--accent2); }
+    #close-drawer-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: color .15s, background .15s; }
+    #close-drawer-btn:hover { color: var(--text); background: var(--surface2); }
+    #playlist-tabs { display: flex; gap: 3px; background: var(--surface2); border-radius: 8px; padding: 3px; overflow-x: auto; }
+    #playlist-tabs::-webkit-scrollbar { height: 0; }
+    .pl-tab { flex-shrink: 0; padding: 5px 12px; border-radius: 6px; border: none; background: none; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; transition: background .15s, color .15s; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+    .pl-tab.active { background: var(--surface); color: var(--text); }
+    .pl-tab-add { flex-shrink: 0; width: 30px; padding: 5px; border-radius: 6px; border: none; background: none; color: var(--muted); font-size: 16px; cursor: pointer; transition: color .15s, background .15s; }
+    .pl-tab-add:hover { color: var(--accent2); background: var(--surface); }
+    #queue-container { flex: 1; overflow-y: auto; padding: 4px 0; }
+    #queue-container::-webkit-scrollbar { width: 4px; }
+    #queue-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .queue-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px; color: var(--muted); font-size: 13px; text-align: center; padding: 30px; line-height: 1.7; }
+    .queue-empty-icon { font-size: 36px; opacity: .3; }
+    .queue-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; cursor: pointer; transition: background .1s; position: relative; border-top: 2px solid transparent; border-bottom: 2px solid transparent; }
+    .queue-item:hover { background: var(--surface2); }
+    .queue-item.playing { background: var(--surface2); }
+    .queue-item.playing::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent2); }
+    .queue-item.drag-over-top { border-top-color: var(--accent); }
+    .queue-item.drag-over-bot { border-bottom-color: var(--accent); }
+    .qi-drag { color: var(--muted); font-size: 14px; cursor: grab; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+    .queue-item:hover .qi-drag { opacity: 1; }
+    .qi-num { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); min-width: 20px; text-align: right; flex-shrink: 0; }
+    .queue-item.playing .qi-num { color: var(--accent2); }
+    .qi-info { flex: 1; min-width: 0; }
+    .qi-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qi-show { font-size: 11px; color: var(--muted); }
+    .queue-item.playing .qi-name { color: var(--accent2); }
+    .qi-remove { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 3px 5px; border-radius: 4px; opacity: 0; transition: opacity .15s, color .15s; flex-shrink: 0; }
+    .queue-item:hover .qi-remove { opacity: 1; }
+    .qi-remove:hover { color: var(--danger); }
+    #drawer-footer { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; }
+    #rename-pl-btn, #clear-queue-btn { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 6px 12px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; transition: color .15s, border-color .15s; }
+    #rename-pl-btn:hover { color: var(--text); border-color: var(--muted); }
+    #clear-queue-btn:hover { color: var(--danger); border-color: var(--danger); }
+    #new-pl-btn { margin-left: auto; background: var(--accent2); color: #0a0a0f; border: none; border-radius: 6px; padding: 6px 14px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; transition: opacity .15s; }
+    #new-pl-btn:hover { opacity: .85; }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent); color: var(--text); padding: 9px 18px; border-radius: 8px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 200; white-space: nowrap; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ffmpeg loading banner */
+    #ffmpeg-banner { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface2); border-top: 1px solid var(--border); padding: 8px 20px; display: flex; align-items: center; gap: 12px; z-index: 100; transform: translateY(100%); transition: transform .3s; }
+    #ffmpeg-banner.visible { transform: translateY(0); }
+    #ffmpeg-banner .fb-spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--accent2); border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0; }
+    #ffmpeg-banner .fb-text { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--muted); }
+    #ffmpeg-banner .fb-text span { color: var(--accent2); }
+  </style>
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <div id="logo">EZ<span>watch</span></div>
+    <div id="now-playing-bar">
+      <span class="np-label">NOW PLAYING</span>
+      <span id="now-playing-title">—</span>
+      <span id="sub-status"></span>
+    </div>
+    <div id="autoqueue-toggle" class="on">
+      <span>🔁</span><span class="aq-label">AUTO-QUEUE</span>
+    </div>
+    <button id="playlist-btn">🎞 Playlist <span id="playlist-count"></span></button>
+    <button id="add-files-btn">＋ Add Files</button>
+  </header>
+
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <h2>My Library</h2>
+      <button id="clear-all-btn">Clear all</button>
+    </div>
+    <div id="shows-list">
+      <div id="sidebar-empty">Drop video files here<br>or click "Add Files" to begin</div>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div id="drop-zone">
+      <div class="drop-icon">🎬</div>
+      <div class="drop-title">Drop Videos Here</div>
+      <div class="drop-sub">Drag TV episodes anywhere onto the app. ASS/SSA subtitles extracted automatically. Subtitle &amp; audio preferences remembered per show.</div>
+    </div>
+
+    <div id="player-view">
+      <div id="video-wrapper">
+        <video id="video-el" preload="metadata"></video>
+        <div id="extract-overlay">
+          <div class="extract-spinner"></div>
+          <div class="extract-msg">EXTRACTING SUBTITLES…</div>
+        </div>
+      </div>
+      <div id="controls">
+        <div id="progress-row">
+          <span class="time-label" id="time-current">0:00</span>
+          <input type="range" id="progress-bar" min="0" max="100" value="0" step="0.1" />
+          <span class="time-label" id="time-total">0:00</span>
+        </div>
+        <div id="buttons-row">
+          <button class="ctrl-btn" id="prev-btn">⏮</button>
+          <button class="ctrl-btn" id="skip-back-btn">⏪</button>
+          <button class="ctrl-btn" id="play-btn">▶</button>
+          <button class="ctrl-btn" id="skip-fwd-btn">⏩</button>
+          <button class="ctrl-btn" id="next-btn">⏭</button>
+          <div class="ctrl-spacer"></div>
+          <span class="ctrl-label">SUB</span>
+          <select class="track-select" id="sub-select"><option value="-1">Off</option></select>
+          <span class="ctrl-label" style="margin-left:4px">AUD</span>
+          <select class="track-select" id="aud-select"><option value="0">Default</option></select>
+          <select id="speed-select">
+            <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+            <option value="1" selected>1×</option><option value="1.25">1.25×</option>
+            <option value="1.5">1.5×</option><option value="2">2×</option>
+          </select>
+          <div id="vol-row">
+            <button class="ctrl-btn" id="mute-btn">🔊</button>
+            <input type="range" id="vol-slider" min="0" max="1" step="0.02" value="1" />
+          </div>
+          <button class="ctrl-btn" id="fs-btn">⛶</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- PLAYLIST DRAWER -->
+<div id="playlist-drawer">
+  <div id="drawer-header">
+    <div id="drawer-title-row">
+      <div id="drawer-title">PLAYLIST</div>
+      <button id="close-drawer-btn">✕</button>
+    </div>
+    <div id="playlist-tabs">
+      <button class="pl-tab-add" id="add-pl-tab-btn">＋</button>
+    </div>
+  </div>
+  <div id="queue-container"></div>
+  <div id="drawer-footer">
+    <button id="rename-pl-btn">✏ Rename</button>
+    <button id="clear-queue-btn">🗑 Clear</button>
+    <button id="new-pl-btn">＋ New Playlist</button>
+  </div>
+</div>
+
+<div id="ffmpeg-banner">
+  <div class="fb-spinner"></div>
+  <div class="fb-text">Loading <span>ffmpeg.wasm</span> for subtitle extraction — first time only, then cached…</div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="file-input" multiple accept="video/*" style="display:none" />
+
+<!-- ffmpeg.wasm v0.12 -->
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════
+//  EZWATCH — with ASS subtitle extraction
+// ═══════════════════════════════════════════════
+
+// ── IndexedDB ──
+const DB_NAME = 'ezwatch3', DB_VER = 1;
+let db;
+function openDB() {
+  return new Promise((res,rej) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      [['prefs','showKey'],['progress','fileKey'],['playlists','id']].forEach(([s,k]) => {
+        if (!d.objectStoreNames.contains(s)) d.createObjectStore(s,{keyPath:k});
+      });
+    };
+    req.onsuccess = e => { db=e.target.result; res(); };
+    req.onerror = e => rej(e);
+  });
+}
+const idbTx  = (s,m='readonly') => db.transaction(s,m).objectStore(s);
+const dbPut  = (s,v) => new Promise((r,j)=>{ const q=idbTx(s,'readwrite').put(v); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbGet  = (s,k) => new Promise((r,j)=>{ const q=idbTx(s).get(k); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbGetAll=(s)   => new Promise((r,j)=>{ const q=idbTx(s).getAll(); q.onsuccess=()=>r(q.result); q.onerror=()=>j(q.error); });
+const dbClear= (s)   => new Promise((r,j)=>{ const q=idbTx(s,'readwrite').clear(); q.onsuccess=()=>r(); q.onerror=()=>j(q.error); });
+
+// ── ffmpeg.wasm setup ──
+const { FFmpeg } = FFmpegWASM;
+const { fetchFile, toBlobURL } = FFmpegUtil;
+let ffmpeg = null;
+let ffmpegReady = false;
+let ffmpegLoading = false;
+
+async function initFFmpeg() {
+  if (ffmpegReady || ffmpegLoading) return;
+  ffmpegLoading = true;
+  document.getElementById('ffmpeg-banner').classList.add('visible');
+  try {
+    ffmpeg = new FFmpeg();
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,   'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    ffmpegReady = true;
+    document.getElementById('ffmpeg-banner').classList.remove('visible');
+    showToast('Subtitle engine ready', 'var(--accent)');
+  } catch(e) {
+    console.warn('ffmpeg.wasm failed to load:', e);
+    document.getElementById('ffmpeg-banner').classList.remove('visible');
+    showToast('Subtitle extraction unavailable — native tracks only', 'var(--muted)');
+  }
+  ffmpegLoading = false;
+}
+
+// ── libass (SubtitlesOctopus) ──
+// Loaded on demand via dynamic script tag
+let octopusLoaded = false;
+let octopusLoading = false;
+let octopusInstance = null;
+
+function loadOctopus() {
+  if (octopusLoaded || octopusLoading) return Promise.resolve(octopusLoaded);
+  octopusLoading = true;
+  return new Promise((res) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/javascript-subtitles-octopus@4.1.0/dist/subtitles-octopus.js';
+    s.onload  = () => { octopusLoaded=true; octopusLoading=false; res(true); };
+    s.onerror = () => { octopusLoading=false; res(false); };
+    document.head.appendChild(s);
+  });
+}
+
+function destroyOctopus() {
+  if (octopusInstance) {
+    try { octopusInstance.dispose(); } catch(e) {}
+    octopusInstance = null;
+    // Remove any leftover canvas the library injected
+    document.querySelectorAll('#video-wrapper canvas').forEach(c => c.remove());
+  }
+}
+
+// ── State ──
+let library    = {};
+let currentEp  = null;
+let queuePos   = -1;
+let blobUrl    = null;
+let seeking    = false;
+let autoQueue  = true;
+let playlists  = [];
+let activePlId = null;
+
+// Subtitle state per episode
+// extractedSubs[filename] = [ {index, type:'ass'|'srt', label, lang, data:string} ]
+let extractedSubs = {};
+let activeAssTrack = null; // currently rendering ASS track index in extractedSubs array
+
+// ── DOM ──
+const $ = id => document.getElementById(id);
+const videoEl        = $('video-el');
+const videoWrapper   = $('video-wrapper');
+const dropZone       = $('drop-zone');
+const playerView     = $('player-view');
+const showsList      = $('shows-list');
+const sidebarEl      = $('sidebar');
+const nowTitle       = $('now-playing-title');
+const subStatus      = $('sub-status');
+const progressBar    = $('progress-bar');
+const timeCurrent    = $('time-current');
+const timeTotal      = $('time-total');
+const playBtn        = $('play-btn');
+const prevBtn        = $('prev-btn');
+const nextBtn        = $('next-btn');
+const skipBackBtn    = $('skip-back-btn');
+const skipFwdBtn     = $('skip-fwd-btn');
+const muteBtn        = $('mute-btn');
+const volSlider      = $('vol-slider');
+const speedSelect    = $('speed-select');
+const subSelect      = $('sub-select');
+const audSelect      = $('aud-select');
+const fsBtn          = $('fs-btn');
+const fileInput      = $('file-input');
+const toast          = $('toast');
+const playlistDrawer = $('playlist-drawer');
+const playlistBtn    = $('playlist-btn');
+const closeDrawerBtn = $('close-drawer-btn');
+const playlistCount  = $('playlist-count');
+const queueContainer = $('queue-container');
+const playlistTabs   = $('playlist-tabs');
+const addPlTabBtn    = $('add-pl-tab-btn');
+const newPlBtn       = $('new-pl-btn');
+const renamePlBtn    = $('rename-pl-btn');
+const clearQueueBtn  = $('clear-queue-btn');
+const drawerTitle    = $('drawer-title');
+const aqToggle       = $('autoqueue-toggle');
+const extractOverlay = $('extract-overlay');
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg, color) {
+  toast.textContent = msg;
+  toast.style.borderLeftColor = color||'var(--accent)';
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove('show'), 2800);
+}
+
+// ── Helpers ──
+const fmt = s => {
+  if (!s||isNaN(s)) return '0:00';
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);
+  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`;
+};
+const titleCase = s => s.replace(/\b\w/g,c=>c.toUpperCase());
+const showKey   = n => n.toLowerCase().replace(/[^a-z0-9]/g,'_');
+const cleanName = f => f.replace(/\.[^.]+$/,'').replace(/[._]/g,' ').replace(/\s+/g,' ').trim();
+
+function parseFilename(name) {
+  const base=name.replace(/\.[^.]+$/,'');
+  const pats=[/^(.+?)[.\s_-]+[Ss](\d+)[Ee](\d+)/,/^(.+?)[.\s_-]+(\d+)[xX](\d+)/,/^(.+?)[.\s_-]+[Ss]eason[.\s_]?(\d+)[.\s_-]*[Ee]pisode[.\s_]?(\d+)/i];
+  for (const p of pats) {
+    const m=base.match(p);
+    if(m) return {showName:titleCase(m[1].replace(/[._]/g,' ').trim()),season:+m[2],episode:+m[3],label:`S${String(+m[2]).padStart(2,'0')}E${String(+m[3]).padStart(2,'0')}`};
+  }
+  return {showName:titleCase(base),season:1,episode:null,label:null};
+}
+
+const getActivePl = () => playlists.find(p=>p.id===activePlId)||null;
+
+// ── Playlist persistence ──
+async function savePlaylists() { for(const pl of playlists) await dbPut('playlists',pl); }
+async function loadPlaylists() {
+  const all=await dbGetAll('playlists');
+  if(all.length){playlists=all;activePlId=playlists[0].id;}
+  else{await createPlaylist('My Playlist',true);}
+}
+async function createPlaylist(name,silent) {
+  const pl={id:Date.now(),name,items:[]};
+  playlists.push(pl);activePlId=pl.id;
+  await dbPut('playlists',pl);
+  renderPlaylistTabs();renderQueue();updatePlCount();
+  if(!silent) showToast(`"${name}" created`,'var(--accent2)');
+  return pl;
+}
+
+// ── Add files ──
+async function addFiles(files) {
+  const vids=Array.from(files).filter(f=>f.type.startsWith('video/')||/\.(mp4|mkv|avi|mov|webm|m4v|ts|flv)$/i.test(f.name));
+  if(!vids.length){showToast('No video files found');return;}
+  let added=0;
+  for(const file of vids){
+    const meta=parseFilename(file.name);
+    const key=showKey(meta.showName);
+    if(!library[key]) library[key]={name:meta.showName,episodes:[]};
+    if(library[key].episodes.find(e=>e.name===file.name)) continue;
+    library[key].episodes.push({name:file.name,display:meta.label||cleanName(file.name),season:meta.season,episode:meta.episode,file});
+    added++;
+  }
+  for(const key in library) library[key].episodes.sort((a,b)=>a.season!==b.season?a.season-b.season:(a.episode??999)-(b.episode??999));
+  renderSidebar();
+  if(added) showToast(`Added ${added} episode${added>1?'s':''}`);
+  // Kick off ffmpeg loading in background once files are added
+  if(!ffmpegReady && !ffmpegLoading) initFFmpeg();
+}
+
+// ── SUBTITLE EXTRACTION ──
+async function extractSubtitles(file) {
+  if(!ffmpegReady) return [];
+  
+  const fname = file.name;
+  if(extractedSubs[fname]) return extractedSubs[fname]; // cached
+
+  extractOverlay.classList.add('visible');
+  subStatus.textContent = 'EXTRACTING…';
+  subStatus.className = 'extracting';
+
+  const results = [];
+  try {
+    // Write input file to ffmpeg virtual FS
+    const inName = 'input_' + Date.now() + '.' + fname.split('.').pop();
+    await ffmpeg.writeFile(inName, await fetchFile(file));
+
+    // Probe subtitle streams using ffmpeg stderr output
+    // Run with -i only to get stream info, capture via log
+    let probeOutput = '';
+    ffmpeg.on('log', ({message}) => { probeOutput += message + '\n'; });
+    
+    try {
+      await ffmpeg.exec(['-i', inName]);
+    } catch(e) {
+      // ffmpeg always "errors" when no output specified — that's expected
+    }
+    ffmpeg.off('log');
+
+    // Parse stream info to find subtitle tracks
+    // Lines like: Stream #0:2(eng): Subtitle: ass (default)
+    const streamRe = /Stream #0:(\d+)(?:\((\w+)\))?: Subtitle: (\w+)(?:.*\((\w+)\))?/g;
+    const subStreams = [];
+    let m;
+    while((m=streamRe.exec(probeOutput))!==null) {
+      subStreams.push({ streamIdx: m[1], lang: m[2]||'', codec: m[3], flags: m[4]||'' });
+    }
+
+    // Extract each subtitle stream
+    for(let i=0; i<subStreams.length; i++) {
+      const stream = subStreams[i];
+      const isAss  = stream.codec==='ass'||stream.codec==='ssa';
+      const isSrt  = stream.codec==='subrip'||stream.codec==='srt';
+      const isWebVtt = stream.codec==='webvtt';
+
+      if(!isAss && !isSrt && !isWebVtt) continue; // skip PGS/image subs
+
+      const ext  = isAss?'ass':(isWebVtt?'vtt':'srt');
+      const outName = `sub_${i}.${ext}`;
+      
+      try {
+        await ffmpeg.exec(['-i', inName, '-map', `0:${stream.streamIdx}`, '-c', 'copy', outName]);
+        const data = await ffmpeg.readFile(outName);
+        const text = new TextDecoder().decode(data);
+        await ffmpeg.deleteFile(outName);
+
+        const label = stream.lang
+          ? `${stream.lang.toUpperCase()}${stream.flags==='default'?' (default)':stream.flags==='forced'?' (forced)':''}`
+          : `Track ${i+1}`;
+
+        results.push({ index: i, type: ext, label, lang: stream.lang, data: text });
+      } catch(e) {
+        console.warn(`Failed to extract sub stream ${i}:`, e);
+      }
+    }
+
+    await ffmpeg.deleteFile(inName);
+  } catch(e) {
+    console.warn('Subtitle extraction error:', e);
+  }
+
+  extractOverlay.classList.remove('visible');
+  extractedSubs[fname] = results;
+  return results;
+}
+
+// ── Apply ASS track via SubtitlesOctopus ──
+async function renderAssTrack(assData) {
+  destroyOctopus();
+  if(!assData) return;
+
+  const ok = await loadOctopus();
+  if(!ok) { showToast('libass renderer unavailable','var(--muted)'); return; }
+
+  try {
+    const blob = new Blob([assData], {type:'text/plain'});
+    const url  = URL.createObjectURL(blob);
+
+    octopusInstance = new SubtitlesOctopus({
+      video: videoEl,
+      subUrl: url,
+      workerUrl: 'https://cdn.jsdelivr.net/npm/javascript-subtitles-octopus@4.1.0/dist/subtitles-octopus-worker.js',
+      legacyWorkerUrl: 'https://cdn.jsdelivr.net/npm/javascript-subtitles-octopus@4.1.0/dist/subtitles-octopus-worker-legacy.js',
+      renderAhead: 0.3,
+      onReady: () => URL.revokeObjectURL(url),
+    });
+  } catch(e) {
+    console.warn('SubtitlesOctopus error:', e);
+  }
+}
+
+// ── Populate subtitle dropdown (merges native + extracted) ──
+async function populateSubSelect(sKey, extractedTracks) {
+  const prefs = await dbGet('prefs', sKey);
+  subSelect.innerHTML = '<option value="off">Off</option>';
+
+  // Native text tracks (SRT/VTT natively supported by browser)
+  const nativeTracks = videoEl.textTracks;
+  for(let i=0;i<nativeTracks.length;i++){
+    const t=nativeTracks[i];
+    if(t.kind==='subtitles'||t.kind==='captions'){
+      const o=document.createElement('option');
+      o.value='native:'+i;
+      o.textContent=(t.label||t.language||`Native ${i+1}`)+' [native]';
+      subSelect.appendChild(o);
+    }
+  }
+  for(let i=0;i<nativeTracks.length;i++) nativeTracks[i].mode='disabled';
+
+  // Extracted tracks (ASS/SRT from ffmpeg)
+  if(extractedTracks?.length) {
+    extractedTracks.forEach((t,i) => {
+      const o=document.createElement('option');
+      o.value='ext:'+i;
+      o.textContent=t.label+(t.type==='ass'?' [ASS]':' [SRT]');
+      subSelect.appendChild(o);
+    });
+  }
+
+  // Restore pref
+  if(prefs?.subPref) {
+    // Try to match saved pref
+    const opt = subSelect.querySelector(`option[value="${prefs.subPref}"]`);
+    if(opt) {
+      subSelect.value = prefs.subPref;
+      await applySubSelection(prefs.subPref, extractedTracks, false);
+      return;
+    }
+    // Fuzzy match by lang
+    if(prefs.subLang && extractedTracks?.length) {
+      const match = extractedTracks.find(t=>t.lang===prefs.subLang);
+      if(match) {
+        const val = 'ext:'+extractedTracks.indexOf(match);
+        subSelect.value = val;
+        await applySubSelection(val, extractedTracks, false);
+        return;
+      }
+    }
+  }
+
+  // Auto-select first ASS track if no pref
+  if(extractedTracks?.length) {
+    const firstAss = extractedTracks.findIndex(t=>t.type==='ass');
+    if(firstAss>=0) {
+      const val='ext:'+firstAss;
+      subSelect.value=val;
+      await applySubSelection(val, extractedTracks, false);
+      subStatus.textContent='ASS READY';
+      subStatus.className='ready';
+      return;
+    }
+  }
+
+  subStatus.textContent='';
+}
+
+async function applySubSelection(val, extractedTracks, save=true) {
+  // Clear native tracks
+  const nativeTracks=videoEl.textTracks;
+  for(let i=0;i<nativeTracks.length;i++) nativeTracks[i].mode='disabled';
+  destroyOctopus();
+  activeAssTrack=null;
+
+  if(val==='off'||!val) {
+    subStatus.textContent=''; 
+    if(save&&currentEp) {
+      const prefs=(await dbGet('prefs',currentEp.showKey))||{showKey:currentEp.showKey};
+      prefs.subPref='off'; prefs.subLang=null;
+      await dbPut('prefs',prefs);
+    }
+    return;
+  }
+
+  if(val.startsWith('native:')) {
+    const idx=parseInt(val.split(':')[1]);
+    if(nativeTracks[idx]) {
+      nativeTracks[idx].mode='showing';
+      subStatus.textContent='SRT';
+      subStatus.className='ready';
+    }
+  } else if(val.startsWith('ext:')) {
+    const idx=parseInt(val.split(':')[1]);
+    const track=extractedTracks?.[idx];
+    if(track) {
+      if(track.type==='ass'||track.type==='ssa') {
+        await renderAssTrack(track.data);
+        activeAssTrack=idx;
+        subStatus.textContent='ASS ✓';
+        subStatus.className='ready';
+      } else {
+        // SRT/VTT — inject as blob URL via track element
+        const blob=new Blob([track.data],{type:'text/vtt'});
+        const url=URL.createObjectURL(blob);
+        const trackEl=document.createElement('track');
+        trackEl.kind='subtitles'; trackEl.src=url; trackEl.default=true;
+        videoEl.appendChild(trackEl);
+        trackEl.addEventListener('load',()=>{trackEl.track.mode='showing';URL.revokeObjectURL(url);});
+        subStatus.textContent='SRT';
+        subStatus.className='ready';
+      }
+    }
+  }
+
+  // Save pref
+  if(save&&currentEp) {
+    const prefs=(await dbGet('prefs',currentEp.showKey))||{showKey:currentEp.showKey};
+    prefs.subPref=val;
+    // Save lang for fuzzy matching on next episode
+    if(val.startsWith('ext:')) {
+      const idx=parseInt(val.split(':')[1]);
+      prefs.subLang=extractedTracks?.[idx]?.lang||null;
+    }
+    await dbPut('prefs',prefs);
+    showToast('Subtitle preference saved for this show');
+  }
+}
+
+subSelect.addEventListener('change', async () => {
+  if(!currentEp) return;
+  const ep=library[currentEp.showKey]?.episodes[currentEp.epIndex];
+  const extracted=ep?extractedSubs[ep.name]||[]:[];
+  await applySubSelection(subSelect.value, extracted, true);
+});
+
+// ── Audio tracks ──
+async function populateAudSelect(sKey) {
+  const at=videoEl.audioTracks;
+  audSelect.innerHTML='<option value="0">Default</option>';
+  if(!at||at.length<=1) return;
+  const prefs=await dbGet('prefs',sKey);
+  for(let i=0;i<at.length;i++){const o=document.createElement('option');o.value=i;o.textContent=at[i].label||at[i].language||`Audio ${i+1}`;audSelect.appendChild(o);}
+  if(prefs?.audLang){for(let i=0;i<at.length;i++){if(at[i].language===prefs.audLang||at[i].label===prefs.audLabel){audSelect.value=i;for(let j=0;j<at.length;j++)at[j].enabled=(j===i);break;}}}
+}
+audSelect.addEventListener('change',async()=>{
+  if(!currentEp)return;
+  const at=videoEl.audioTracks,idx=parseInt(audSelect.value);
+  if(at)for(let i=0;i<at.length;i++)at[i].enabled=(i===idx);
+  const prefs=(await dbGet('prefs',currentEp.showKey))||{showKey:currentEp.showKey};
+  if(at?.[idx])Object.assign(prefs,{audLang:at[idx].language,audLabel:at[idx].label});
+  await dbPut('prefs',prefs);showToast('Audio preference saved for this show');
+});
+
+// ── Playback ──
+async function playFromLibrary(sKey,epIdx){
+  currentEp={showKey:sKey,epIndex:epIdx,source:'library'};queuePos=-1;
+  await startPlay(sKey,epIdx);
+}
+async function playFromQueue(pos){
+  const pl=getActivePl();if(!pl||pos<0||pos>=pl.items.length)return;
+  queuePos=pos;const item=pl.items[pos];
+  currentEp={showKey:item.showKey,epIndex:item.epIndex,source:'queue'};
+  await startPlay(item.showKey,item.epIndex);renderQueue();
+}
+
+async function startPlay(sKey,epIdx){
+  const ep=library[sKey]?.episodes[epIdx];if(!ep)return;
+  
+  destroyOctopus();
+  subStatus.textContent='';
+  subSelect.innerHTML='<option value="off">Off</option>';
+
+  if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=null;}
+  blobUrl=URL.createObjectURL(ep.file);
+  videoEl.src=blobUrl;
+
+  const prog=await dbGet('progress',sKey+'|'+ep.name);
+  if(prog?.time>5) videoEl.addEventListener('loadedmetadata',()=>{videoEl.currentTime=prog.time;},{once:true});
+
+  videoEl.load();
+  videoEl.play().catch(()=>{});
+  nowTitle.textContent=cleanName(ep.name);
+  document.title=`EZwatch — ${cleanName(ep.name)}`;
+  dropZone.style.display='none';
+  playerView.classList.add('visible');
+  renderSidebar();renderQueue();
+
+  // Audio tracks after metadata
+  videoEl.addEventListener('loadedmetadata',()=>populateAudSelect(sKey),{once:true});
+
+  // Extract subtitles in background (non-blocking)
+  extractAndApplySubs(sKey, ep);
+}
+
+async function extractAndApplySubs(sKey, ep) {
+  subStatus.textContent='…';
+  subStatus.className='extracting';
+  
+  let extracted = [];
+  if(ffmpegReady) {
+    extracted = await extractSubtitles(ep.file);
+  } else if(!ffmpegLoading) {
+    // ffmpeg not loaded yet — wait for it
+    await initFFmpeg();
+    if(ffmpegReady) extracted = await extractSubtitles(ep.file);
+  }
+
+  await populateSubSelect(sKey, extracted);
+}
+
+videoEl.addEventListener('ended',()=>{
+  if(!currentEp)return;
+  if(currentEp.source==='queue'){
+    const pl=getActivePl();
+    if(pl&&queuePos<pl.items.length-1){showToast('Next up…');setTimeout(()=>playFromQueue(queuePos+1),1200);}
+  } else if(autoQueue){
+    const show=library[currentEp.showKey];
+    if(show&&currentEp.epIndex<show.episodes.length-1){showToast('Next episode…');setTimeout(()=>playFromLibrary(currentEp.showKey,currentEp.epIndex+1),1200);}
+  }
+});
+
+aqToggle.addEventListener('click',()=>{autoQueue=!autoQueue;aqToggle.classList.toggle('on',autoQueue);showToast(autoQueue?'Auto-queue ON':'Auto-queue OFF');});
+
+// ── Playlist ──
+async function toggleEpInPlaylist(sKey,epIdx){
+  let pl=getActivePl();if(!pl){await createPlaylist('My Playlist',true);pl=getActivePl();}
+  const existIdx=pl.items.findIndex(i=>i.showKey===sKey&&i.epIndex===epIdx);
+  if(existIdx>=0){pl.items.splice(existIdx,1);if(queuePos>existIdx)queuePos--;showToast('Removed from playlist');}
+  else{pl.items.push({showKey:sKey,epIndex:epIdx,id:Date.now()+Math.random()});showToast('Added to playlist','var(--accent2)');}
+  await savePlaylists();updatePlCount();renderQueue();renderSidebar();
+}
+async function addShowToPlaylist(sKey){
+  let pl=getActivePl();if(!pl){await createPlaylist('My Playlist',true);pl=getActivePl();}
+  let added=0;
+  library[sKey].episodes.forEach((ep,idx)=>{
+    if(!pl.items.find(i=>i.showKey===sKey&&i.epIndex===idx)){pl.items.push({showKey:sKey,epIndex:idx,id:Date.now()+Math.random()+idx});added++;}
+  });
+  await savePlaylists();updatePlCount();renderQueue();renderSidebar();
+  showToast(`Added ${added} episode${added!==1?'s':''} to playlist`,'var(--accent2)');
+}
+function updatePlCount(){const n=getActivePl()?.items.length||0;playlistCount.textContent=n;playlistCount.classList.toggle('visible',n>0);}
+
+// ── Sidebar ──
+function renderSidebar(){
+  const keys=Object.keys(library).sort((a,b)=>library[a].name.localeCompare(library[b].name));
+  showsList.innerHTML='';
+  if(!keys.length){showsList.appendChild($('sidebar-empty'));return;}
+  const pl=getActivePl();
+  for(const key of keys){
+    const show=library[key];
+    const group=document.createElement('div');
+    group.className='show-group'+(keys.length===1||currentEp?.showKey===key?' open':'');
+    const inits=show.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const header=document.createElement('div');
+    header.className='show-group-header';
+    header.innerHTML=`<div class="show-thumb">${inits}</div><div class="show-info"><div class="show-name">${show.name}</div><div class="show-count">${show.episodes.length} episode${show.episodes.length!==1?'s':''}</div></div><button class="add-all-btn">＋ all</button><span class="show-chevron">▶</span>`;
+    header.querySelector('.add-all-btn').addEventListener('click',e=>{e.stopPropagation();addShowToPlaylist(key);});
+    header.addEventListener('click',()=>group.classList.toggle('open'));
+    const epList=document.createElement('div');epList.className='episodes-list';
+    show.episodes.forEach((ep,idx)=>{
+      const inQ=pl?.items.some(i=>i.showKey===key&&i.epIndex===idx);
+      const item=document.createElement('div');
+      item.className='episode-item'+(currentEp?.showKey===key&&currentEp?.epIndex===idx?' active':'');
+      item.innerHTML=`<span class="ep-num">${ep.display||String(idx+1).padStart(2,'0')}</span><span class="ep-name">${cleanName(ep.name)}</span><button class="ep-add-btn ${inQ?'in-queue':''}">${inQ?'✓':'＋'}</button>`;
+      item.querySelector('.ep-add-btn').addEventListener('click',e=>{e.stopPropagation();toggleEpInPlaylist(key,idx);});
+      item.addEventListener('click',()=>playFromLibrary(key,idx));
+      epList.appendChild(item);
+    });
+    group.appendChild(header);group.appendChild(epList);showsList.appendChild(group);
+  }
+}
+
+// ── Playlist tabs + queue ──
+function renderPlaylistTabs(){
+  playlistTabs.querySelectorAll('.pl-tab').forEach(t=>t.remove());
+  playlists.forEach(pl=>{
+    const tab=document.createElement('button');
+    tab.className='pl-tab'+(pl.id===activePlId?' active':'');
+    tab.textContent=pl.name;tab.title=pl.name;
+    tab.addEventListener('click',()=>{activePlId=pl.id;renderPlaylistTabs();renderQueue();renderSidebar();updatePlCount();drawerTitle.textContent=pl.name.toUpperCase();});
+    playlistTabs.insertBefore(tab,addPlTabBtn);
+  });
+  drawerTitle.textContent=(getActivePl()?.name||'Playlist').toUpperCase();
+}
+
+function renderQueue(){
+  const pl=getActivePl();queueContainer.innerHTML='';
+  if(!pl?.items.length){queueContainer.innerHTML=`<div class="queue-empty"><div class="queue-empty-icon">📋</div><div>This playlist is empty.<br>Click <strong>＋</strong> next to any episode<br>or use <strong>＋ all</strong> on a show.</div></div>`;return;}
+  pl.items.forEach((item,pos)=>{
+    const show=library[item.showKey],ep=show?.episodes[item.epIndex];if(!ep)return;
+    const playing=currentEp?.source==='queue'&&queuePos===pos;
+    const div=document.createElement('div');
+    div.className='queue-item'+(playing?' playing':'');div.draggable=true;
+    div.innerHTML=`<span class="qi-drag">⠿</span><span class="qi-num">${pos+1}</span><div class="qi-info"><div class="qi-name">${cleanName(ep.name)}</div><div class="qi-show">${show.name}</div></div><button class="qi-remove">✕</button>`;
+    div.addEventListener('click',e=>{if(e.target.closest('.qi-remove,.qi-drag'))return;playFromQueue(pos);});
+    div.querySelector('.qi-remove').addEventListener('click',e=>{e.stopPropagation();removeFromQueue(pos);});
+    div.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',String(pos));e.dataTransfer.effectAllowed='move';setTimeout(()=>div.style.opacity='.4',0);});
+    div.addEventListener('dragend',()=>{div.style.opacity='';clearDragStyles();});
+    div.addEventListener('dragover',e=>{e.preventDefault();clearDragStyles();const mid=div.getBoundingClientRect().top+div.offsetHeight/2;div.classList.add(e.clientY<mid?'drag-over-top':'drag-over-bot');});
+    div.addEventListener('dragleave',clearDragStyles);
+    div.addEventListener('drop',e=>{e.preventDefault();clearDragStyles();const from=parseInt(e.dataTransfer.getData('text/plain'));const mid=div.getBoundingClientRect().top+div.offsetHeight/2;const to=e.clientY<mid?pos:pos+1;if(from===to||from===to-1)return;reorderQueue(from,to>from?to-1:to);});
+    queueContainer.appendChild(div);
+  });
+}
+function clearDragStyles(){queueContainer.querySelectorAll('.drag-over-top,.drag-over-bot').forEach(el=>el.classList.remove('drag-over-top','drag-over-bot'));}
+async function reorderQueue(from,to){const pl=getActivePl();if(!pl)return;const[item]=pl.items.splice(from,1);pl.items.splice(to,0,item);if(queuePos===from)queuePos=to;else if(from<queuePos&&to>=queuePos)queuePos--;else if(from>queuePos&&to<=queuePos)queuePos++;await savePlaylists();renderQueue();}
+async function removeFromQueue(pos){const pl=getActivePl();if(!pl)return;pl.items.splice(pos,1);if(queuePos>=pos)queuePos=Math.max(-1,queuePos-1);await savePlaylists();updatePlCount();renderQueue();renderSidebar();}
+
+// ── Drawer ──
+playlistBtn.addEventListener('click',()=>{const open=playlistDrawer.classList.toggle('open');playlistBtn.classList.toggle('active',open);});
+closeDrawerBtn.addEventListener('click',()=>{playlistDrawer.classList.remove('open');playlistBtn.classList.remove('active');});
+async function newPlaylist(){const name=prompt('Playlist name:',`Playlist ${playlists.length+1}`);if(!name?.trim())return;await createPlaylist(name.trim());}
+newPlBtn.addEventListener('click',newPlaylist);addPlTabBtn.addEventListener('click',newPlaylist);
+renamePlBtn.addEventListener('click',async()=>{const pl=getActivePl();if(!pl)return;const name=prompt('Rename playlist:',pl.name);if(!name?.trim()||name.trim()===pl.name)return;pl.name=name.trim();await savePlaylists();renderPlaylistTabs();showToast(`Renamed to "${pl.name}"`);});
+clearQueueBtn.addEventListener('click',async()=>{const pl=getActivePl();if(!pl?.items.length)return;if(!confirm(`Clear "${pl.name}"?`))return;pl.items=[];queuePos=-1;await savePlaylists();updatePlCount();renderQueue();renderSidebar();showToast('Playlist cleared');});
+
+// ── Prev/Next ──
+prevBtn.addEventListener('click',()=>{if(!currentEp)return;if(currentEp.source==='queue'){if(queuePos>0)playFromQueue(queuePos-1);}else{if(currentEp.epIndex>0)playFromLibrary(currentEp.showKey,currentEp.epIndex-1);}});
+nextBtn.addEventListener('click',()=>{if(!currentEp)return;if(currentEp.source==='queue'){const pl=getActivePl();if(pl&&queuePos<pl.items.length-1)playFromQueue(queuePos+1);}else{const show=library[currentEp.showKey];if(show&&currentEp.epIndex<show.episodes.length-1)playFromLibrary(currentEp.showKey,currentEp.epIndex+1);}});
+
+// ── Video events ──
+videoEl.addEventListener('timeupdate',()=>{if(seeking)return;progressBar.value=videoEl.duration?(videoEl.currentTime/videoEl.duration)*100:0;timeCurrent.textContent=fmt(videoEl.currentTime);});
+videoEl.addEventListener('loadedmetadata',()=>{timeTotal.textContent=fmt(videoEl.duration);});
+videoEl.addEventListener('play',()=>{playBtn.textContent='⏸';});
+videoEl.addEventListener('pause',()=>{playBtn.textContent='▶';});
+progressBar.addEventListener('mousedown',()=>{seeking=true;});
+progressBar.addEventListener('input',()=>{if(videoEl.duration){videoEl.currentTime=(progressBar.value/100)*videoEl.duration;timeCurrent.textContent=fmt(videoEl.currentTime);}});
+progressBar.addEventListener('mouseup',()=>{seeking=false;});
+playBtn.addEventListener('click',()=>videoEl.paused?videoEl.play():videoEl.pause());
+skipBackBtn.addEventListener('click',()=>{videoEl.currentTime=Math.max(0,videoEl.currentTime-10);});
+skipFwdBtn.addEventListener('click',()=>{videoEl.currentTime=Math.min(videoEl.duration||0,videoEl.currentTime+30);});
+muteBtn.addEventListener('click',()=>{videoEl.muted=!videoEl.muted;muteBtn.textContent=videoEl.muted?'🔇':'🔊';});
+volSlider.addEventListener('input',()=>{videoEl.volume=volSlider.value;});
+speedSelect.addEventListener('change',()=>{videoEl.playbackRate=parseFloat(speedSelect.value);});
+fsBtn.addEventListener('click',()=>{document.fullscreenElement?document.exitFullscreen():playerView.requestFullscreen();});
+
+// Progress save
+setInterval(async()=>{if(!currentEp||videoEl.paused||videoEl.ended)return;const ep=library[currentEp.showKey]?.episodes[currentEp.epIndex];if(!ep)return;await dbPut('progress',{fileKey:currentEp.showKey+'|'+ep.name,time:videoEl.currentTime});},5000);
+
+// ── File drag & drop ──
+document.addEventListener('dragover',e=>{if(!e.dataTransfer.types.includes('Files'))return;e.preventDefault();dropZone.classList.add('drag-active');sidebarEl.classList.add('drag-over');});
+document.addEventListener('dragleave',e=>{if(e.relatedTarget&&document.contains(e.relatedTarget))return;dropZone.classList.remove('drag-active');sidebarEl.classList.remove('drag-over');});
+document.addEventListener('drop',async e=>{e.preventDefault();dropZone.classList.remove('drag-active');sidebarEl.classList.remove('drag-over');if(e.dataTransfer.files.length)await addFiles(e.dataTransfer.files);});
+$('add-files-btn').addEventListener('click',()=>fileInput.click());
+fileInput.addEventListener('change',async()=>{if(fileInput.files.length)await addFiles(fileInput.files);fileInput.value='';});
+$('clear-all-btn').addEventListener('click',async()=>{
+  if(!Object.keys(library).length)return;
+  if(!confirm('Remove all shows? (Files untouched.)'))return;
+  destroyOctopus();library={};currentEp=null;queuePos=-1;extractedSubs={};
+  if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=null;}
+  videoEl.src='';playerView.classList.remove('visible');dropZone.style.display='';
+  nowTitle.textContent='—';subStatus.textContent='';document.title='EZwatch';renderSidebar();
+  showToast('Library cleared');
+});
+
+// ── Keyboard ──
+document.addEventListener('keydown',e=>{
+  if(['INPUT','SELECT'].includes(document.activeElement.tagName))return;
+  switch(e.code){
+    case 'Space':e.preventDefault();videoEl.paused?videoEl.play():videoEl.pause();break;
+    case 'ArrowLeft':videoEl.currentTime=Math.max(0,videoEl.currentTime-10);break;
+    case 'ArrowRight':videoEl.currentTime=Math.min(videoEl.duration||0,videoEl.currentTime+30);break;
+    case 'ArrowUp':videoEl.volume=Math.min(1,videoEl.volume+0.1);volSlider.value=videoEl.volume;break;
+    case 'ArrowDown':videoEl.volume=Math.max(0,videoEl.volume-0.1);volSlider.value=videoEl.volume;break;
+    case 'KeyF':fsBtn.click();break;
+    case 'KeyM':muteBtn.click();break;
+    case 'KeyP':playlistBtn.click();break;
+  }
+});
+
+// ── Init ──
+openDB().then(async()=>{
+  await loadPlaylists();
+  renderPlaylistTabs();renderQueue();renderSidebar();updatePlCount();
+  showToast('EZwatch ready — drop episodes to begin');
+});
+</script>
+</body>
+</html>
