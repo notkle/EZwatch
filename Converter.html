@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EZwatch — Subtitle Converter</title>
+  <script src="./coi-serviceworker.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:      #0a0a0f;
+      --surface: #13131a;
+      --surface2:#1c1c28;
+      --surface3:#22222f;
+      --border:  #2a2a3a;
+      --accent:  #e8ff47;
+      --accent2: #ff6b35;
+      --text:    #e8e8f0;
+      --muted:   #6b6b85;
+      --danger:  #ff4545;
+      --success: #47ffb2;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 15px; }
+
+    /* TOPBAR */
+    #topbar { display: flex; align-items: center; padding: 0 28px; gap: 16px; background: var(--surface); border-bottom: 1px solid var(--border); height: 52px; position: sticky; top: 0; z-index: 10; }
+    #logo { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: var(--accent); user-select: none; }
+    #logo span { color: var(--accent2); }
+    #page-title { font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+    #back-btn { margin-left: auto; background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 6px 14px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; transition: color .15s, border-color .15s; text-decoration: none; display: flex; align-items: center; gap: 6px; }
+    #back-btn:hover { color: var(--text); border-color: var(--muted); }
+
+    /* MAIN */
+    #main { max-width: 900px; margin: 0 auto; padding: 36px 28px 80px; }
+
+    .page-title { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 2px; color: var(--accent2); margin-bottom: 6px; }
+    .page-sub { font-size: 13px; color: var(--muted); line-height: 1.6; margin-bottom: 28px; }
+
+    /* ENGINE STATUS */
+    #engine-status { display: flex; align-items: center; gap: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 24px; font-size: 12px; font-family: 'DM Mono', monospace; }
+    .es-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .3s; }
+    .es-dot.loading { background: var(--accent2); animation: pulse 1s infinite; }
+    .es-dot.ready { background: var(--success); }
+    .es-dot.error { background: var(--danger); }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+
+    /* CARDS */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; }
+    .card-title { font-size: 10px; font-family: 'DM Mono', monospace; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; margin-bottom: 14px; }
+
+    /* DROP ZONE */
+    #drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; }
+    #drop-zone:hover, #drop-zone.drag-over { border-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 5%, var(--surface)); }
+    .dz-icon { font-size: 36px; opacity: .25; margin-bottom: 8px; }
+    .dz-title { font-family: 'Bebas Neue', sans-serif; font-size: 20px; letter-spacing: 2px; color: var(--muted); }
+    .dz-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* FILE ENTRIES */
+    #file-entries { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+
+    .file-entry { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .file-entry.converting { border-color: var(--accent2); }
+    .file-entry.done-entry { border-color: var(--success); }
+    .file-entry.error-entry { border-color: var(--danger); }
+
+    .fe-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+    .fe-icon { font-size: 20px; flex-shrink: 0; }
+    .fe-info { flex: 1; min-width: 0; }
+    .fe-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fe-meta { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 2px; }
+    .fe-state { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted); flex-shrink: 0; text-align: right; }
+    .fe-state.probing { color: var(--accent2); }
+    .fe-state.ready { color: var(--accent); }
+    .fe-state.converting { color: var(--accent2); }
+    .fe-state.done { color: var(--success); }
+    .fe-state.error { color: var(--danger); }
+
+    /* TRACKS */
+    .fe-tracks { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .track-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface3); border-radius: 7px; border: 1px solid var(--border); cursor: pointer; transition: border-color .15s; }
+    .track-row:hover { border-color: var(--accent2); }
+    .track-row.selected { border-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 8%, var(--surface3)); }
+    .track-row input[type=checkbox] { accent-color: var(--accent2); width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+    .track-badge { font-size: 10px; font-family: 'DM Mono', monospace; padding: 2px 7px; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border); color: var(--muted); flex-shrink: 0; }
+    .track-badge.pgs { border-color: var(--accent2); color: var(--accent2); }
+    .track-badge.ass { border-color: var(--accent); color: var(--accent); }
+    .track-badge.srt { border-color: var(--success); color: var(--success); }
+    .track-info { flex: 1; min-width: 0; }
+    .track-name { font-size: 12px; font-weight: 500; }
+    .track-detail { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+    .track-output { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; text-align: right; flex-shrink: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .track-output.done { color: var(--success); }
+    .track-output.error { color: var(--danger); }
+
+    /* PROGRESS */
+    .fe-progress { height: 3px; background: var(--border); margin: 0 16px 12px; border-radius: 2px; display: none; }
+    .fe-progress.visible { display: block; }
+    .fe-progress-bar { height: 100%; background: var(--accent2); border-radius: 2px; width: 0%; transition: width .4s; }
+
+    /* FOLDER + ACTIONS */
+    #folder-row { display: flex; align-items: center; gap: 10px; }
+    #folder-path { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 14px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #pick-folder-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 8px 16px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; white-space: nowrap; transition: border-color .15s; }
+    #pick-folder-btn:hover { border-color: var(--muted); }
+
+    #actions-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+    #probe-btn, #start-btn, #clear-btn {
+      border: none; border-radius: 6px; padding: 9px 20px;
+      font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 13px;
+      cursor: pointer; transition: opacity .15s; white-space: nowrap;
+    }
+    #probe-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    #probe-btn:hover:not(:disabled) { border-color: var(--muted); }
+    #start-btn { background: var(--accent2); color: #0a0a0f; }
+    #start-btn:hover:not(:disabled) { opacity: .85; }
+    #clear-btn { background: none; border: 1px solid var(--border); color: var(--muted); }
+    #clear-btn:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+    #probe-btn:disabled, #start-btn:disabled, #clear-btn:disabled { opacity: .35; cursor: not-allowed; }
+    #action-label { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; margin-left: 4px; }
+
+    /* SUMMARY */
+    #summary { background: var(--surface2); border: 1px solid var(--success); border-radius: 8px; padding: 14px 18px; font-size: 13px; display: none; margin-top: 14px; color: var(--success); }
+    #summary.visible { display: block; }
+
+    /* INFO */
+    .info-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 13px 17px; font-size: 12px; color: var(--muted); line-height: 1.7; margin-top: 14px; }
+    .info-box strong { color: var(--text); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin .7s linear infinite; }
+  </style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="logo">EZ<span>watch</span></div>
+  <div id="page-title">Subtitle Converter</div>
+  <a href="./index.html" id="back-btn">← Back to Player</a>
+</div>
+
+<div id="main">
+  <div class="page-title">PGS → ASS Subtitle Converter</div>
+  <div class="page-sub">Drop MKV files, probe to see available subtitle tracks, checkmark which to convert, then start. Each converted track saves as a separate .ass file named after the episode.</div>
+
+  <div id="engine-status">
+    <div class="es-dot loading" id="es-dot"></div>
+    <span id="es-text">Loading subtitle engine — one-time download, then cached…</span>
+  </div>
+
+  <!-- Files -->
+  <div class="card">
+    <div class="card-title">Files</div>
+    <div id="drop-zone">
+      <div class="dz-icon">🎬</div>
+      <div class="dz-title">Drop MKV Files Here</div>
+      <div class="dz-sub">Multiple files supported — click to browse</div>
+    </div>
+    <div id="file-entries"></div>
+    <input type="file" id="file-input" multiple accept=".mkv,video/x-matroska" style="display:none" />
+  </div>
+
+  <!-- Output folder -->
+  <div class="card">
+    <div class="card-title">Save Location</div>
+    <div id="folder-row">
+      <div id="folder-path">No folder selected — choose where to save .ass files</div>
+      <button id="pick-folder-btn">📁 Choose Folder</button>
+    </div>
+    <div class="info-box" style="margin-top:12px">
+      <strong>Tip:</strong> Save .ass files in the same folder as your MKV files.
+      Name them identically to the episode — EZwatch will detect them automatically when you drop both files into the player.
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="card">
+    <div class="card-title">Actions</div>
+    <div id="actions-row">
+      <button id="probe-btn" disabled>🔍 Probe Files</button>
+      <button id="start-btn" disabled>▶ Convert Selected</button>
+      <button id="clear-btn" disabled>✕ Clear All</button>
+      <span id="action-label"></span>
+    </div>
+    <div id="summary"></div>
+  </div>
+
+  <div class="info-box">
+    <strong>How long does conversion take?</strong>
+    Text-based tracks (ASS/SRT) extract in seconds.
+    Image-based PGS tracks require OCR — roughly <strong>5–15 minutes per episode</strong> depending on frame count.
+    Leave the tab open and let it run. Files save automatically as each track finishes.
+  </div>
+</div>
+
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════
+//  EZWATCH SUBTITLE CONVERTER
+// ═══════════════════════════════════════════════
+
+// ── State ──
+let ffmpeg      = null;
+let _fetchFile  = null;
+let ffmpegReady = false;
+let outputDir   = null;  // FileSystemDirectoryHandle
+let entries     = [];    // FileEntry objects
+let busy        = false;
+
+// FileEntry shape:
+// { file, el, stateEl, tracksEl, progressEl, progressBar, tracks: [], probed: false }
+
+// Track shape:
+// { streamIdx, lang, title, codec, type:'pgs'|'ass'|'srt', frames, bytes,
+//   checkboxEl, rowEl, outputEl, selected: bool }
+
+// ── DOM ──
+const $ = id => document.getElementById(id);
+const dropZone      = $('drop-zone');
+const fileInput     = $('file-input');
+const fileEntries   = $('file-entries');
+const folderPath    = $('folder-path');
+const pickFolderBtn = $('pick-folder-btn');
+const probeBtn      = $('probe-btn');
+const startBtn      = $('start-btn');
+const clearBtn      = $('clear-btn');
+const actionLabel   = $('action-label');
+const summary       = $('summary');
+const esDot         = $('es-dot');
+const esText        = $('es-text');
+
+// ── Engine ──
+async function initFFmpeg() {
+  try {
+    const workerResp    = await fetch('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js');
+    const workerText    = await workerResp.text();
+    const workerBlobURL = URL.createObjectURL(new Blob([workerText], {type:'text/javascript'}));
+
+    const mainResp = await fetch('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js');
+    let   mainText = await mainResp.text();
+    const pat = /new Worker\(new URL\([^)]+\(814\)[^)]*\),\{type:void 0\}\)/;
+    mainText = mainText.replace(pat, `new Worker(${JSON.stringify(workerBlobURL)},{type:'classic'})`);
+
+    const patchedURL = URL.createObjectURL(new Blob([mainText], {type:'text/javascript'}));
+    await new Promise((res,rej) => {
+      const s = document.createElement('script');
+      s.src = patchedURL; s.onload=()=>res(); s.onerror=()=>rej(new Error('load failed'));
+      document.head.appendChild(s);
+    });
+
+    const FFmpegClass = window.FFmpegWASM?.FFmpeg ?? window.FFmpeg?.FFmpeg ?? window.FFmpeg;
+    const toBlobURL   = window.FFmpegUtil?.toBlobURL ?? window.toBlobURL;
+    _fetchFile        = window.FFmpegUtil?.fetchFile  ?? window.fetchFile;
+    if (!FFmpegClass || !toBlobURL || !_fetchFile) throw new Error('globals missing');
+
+    ffmpeg = new FFmpegClass();
+    const base = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${base}/ffmpeg-core.js`,   'text/javascript'),
+      wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    ffmpegReady = true;
+    esDot.className = 'es-dot ready';
+    esText.textContent = 'Subtitle engine ready';
+    updateBtns();
+  } catch(e) {
+    console.error(e);
+    esDot.className = 'es-dot error';
+    esText.textContent = 'Engine failed to load — refresh and try again';
+  }
+}
+
+// ── File helpers ──
+function fmtSize(bytes) {
+  if (bytes > 1e9) return (bytes/1e9).toFixed(2)+' GB';
+  return (bytes/1e6).toFixed(1)+' MB';
+}
+
+function toAssTime(s) {
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=Math.floor(s%60), cs=Math.round((s%1)*100);
+  return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+function slugify(str) {
+  return (str||'track').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+}
+
+// ── Add files ──
+function addFiles(newFiles) {
+  const mkv = Array.from(newFiles).filter(f => /\.mkv$/i.test(f.name));
+  if (!mkv.length) return;
+  for (const file of mkv) {
+    if (entries.find(e => e.file.name===file.name && e.file.size===file.size)) continue;
+    const entry = createFileEntry(file);
+    entries.push(entry);
+  }
+  updateBtns();
+}
+
+function createFileEntry(file) {
+  const el = document.createElement('div');
+  el.className = 'file-entry';
+  el.innerHTML = `
+    <div class="fe-header">
+      <div class="fe-icon">🎬</div>
+      <div class="fe-info">
+        <div class="fe-name">${file.name}</div>
+        <div class="fe-meta">${fmtSize(file.size)}</div>
+      </div>
+      <div class="fe-state probing" id="state-${entries.length}">Waiting to probe</div>
+    </div>
+    <div class="fe-progress" id="prog-${entries.length}"><div class="fe-progress-bar"></div></div>
+    <div class="fe-tracks" id="tracks-${entries.length}"></div>
+  `;
+  fileEntries.appendChild(el);
+
+  const idx = entries.length;
+  return {
+    file, el,
+    stateEl:    el.querySelector(`#state-${idx}`),
+    tracksEl:   el.querySelector(`#tracks-${idx}`),
+    progressEl: el.querySelector(`#prog-${idx}`),
+    progressBar:el.querySelector('.fe-progress-bar'),
+    tracks: [],
+    probed: false,
+    done:   false,
+  };
+}
+
+// ── Probe ──
+async function probeAll() {
+  if (!ffmpegReady || busy) return;
+  busy = true; updateBtns();
+  actionLabel.textContent = 'Probing files…';
+
+  for (const entry of entries) {
+    if (entry.probed) continue;
+    await probeEntry(entry);
+  }
+
+  busy = false;
+  actionLabel.textContent = '';
+  updateBtns();
+}
+
+async function probeEntry(entry) {
+  setState(entry, 'probing', '⚙ Probing…');
+  try {
+    const inName = `probe_${Date.now()}.mkv`;
+    await ffmpeg.writeFile(inName, await _fetchFile(entry.file));
+
+    let probe = '';
+    const logH = ({message}) => { probe += message + '\n'; };
+    ffmpeg.on('log', logH);
+    try {
+      await ffmpeg.exec([
+        '-analyzeduration','100000000','-probesize','100000000',
+        '-i', inName
+      ]);
+    } catch(e) {}
+    ffmpeg.off('log', logH);
+    await ffmpeg.deleteFile(inName);
+
+    // Parse subtitle streams
+    // Match lines like: Stream #0:3(eng): Subtitle: hdmv_pgs_subtitle
+    const streamRe = /Stream #0:(\d+)(?:\((\w+)\))?: Subtitle: (\w+)/g;
+    let m;
+    const rawStreams = [];
+    while ((m = streamRe.exec(probe)) !== null) {
+      rawStreams.push({ streamIdx: m[1], lang: m[2]||'', codec: m[3] });
+    }
+
+    // Try to extract title metadata for each stream
+    // Titles appear in the metadata block before the next Stream line
+    const lines = probe.split('\n');
+    for (const rs of rawStreams) {
+      const streamLine = `Stream #0:${rs.streamIdx}`;
+      const lineIdx = lines.findIndex(l => l.includes(streamLine) && l.includes('Subtitle'));
+      let title = '';
+      // Look backwards from stream line for title in metadata block
+      for (let i = lineIdx - 1; i >= Math.max(0, lineIdx - 10); i--) {
+        const tm = lines[i].match(/title\s*:\s*(.+)/i);
+        if (tm) { title = tm[1].trim(); break; }
+        if (lines[i].includes('Stream #')) break;
+      }
+      rs.title = title;
+
+      // Classify
+      const c = rs.codec.toLowerCase();
+      if (c === 'hdmv_pgs_subtitle' || c === 'pgssub') rs.type = 'pgs';
+      else if (c === 'ass' || c === 'ssa') rs.type = 'ass';
+      else if (c === 'subrip' || c === 'srt') rs.type = 'srt';
+      else if (c === 'webvtt') rs.type = 'vtt';
+      else rs.type = 'unknown';
+
+      // Get frame/byte counts from probe
+      const frameM = probe.slice(probe.indexOf(streamLine)).match(/NUMBER_OF_FRAMES[^:]*:\s*(\d+)/);
+      const byteM  = probe.slice(probe.indexOf(streamLine)).match(/NUMBER_OF_BYTES[^:]*:\s*(\d+)/);
+      rs.frames = frameM ? parseInt(frameM[1]) : null;
+      rs.bytes  = byteM  ? parseInt(byteM[1])  : null;
+    }
+
+    if (!rawStreams.length) {
+      setState(entry, 'error', 'No subtitle streams found');
+      entry.probed = true;
+      return;
+    }
+
+    // Render track rows with checkboxes
+    entry.tracks = rawStreams.filter(rs => rs.type !== 'unknown');
+    renderTrackRows(entry);
+    entry.probed = true;
+    setState(entry, 'ready', `${entry.tracks.length} track${entry.tracks.length!==1?'s':''} found`);
+
+  } catch(e) {
+    console.error('Probe failed:', entry.file.name, e);
+    setState(entry, 'error', 'Probe failed — see console');
+    entry.probed = true;
+  }
+}
+
+function renderTrackRows(entry) {
+  entry.tracksEl.innerHTML = '';
+  const baseName = entry.file.name.replace(/\.[^.]+$/, '');
+
+  entry.tracks.forEach((track, ti) => {
+    const suffix   = slugify(track.title || track.lang || `track${ti+1}`);
+    const outName  = `${baseName}.${suffix}.ass`;
+    const badgeCls = track.type === 'pgs' ? 'pgs' : track.type === 'ass' ? 'ass' : 'srt';
+    const needsOcr = track.type === 'pgs';
+
+    const row = document.createElement('div');
+    row.className = 'track-row selected';
+    row.innerHTML = `
+      <input type="checkbox" checked />
+      <span class="track-badge ${badgeCls}">${track.type.toUpperCase()}</span>
+      <div class="track-info">
+        <div class="track-name">${track.title || (track.lang ? track.lang.toUpperCase() : `Track ${ti+1}`)}</div>
+        <div class="track-detail">Stream #${track.streamIdx}${track.lang?' · '+track.lang:''}${track.frames?' · '+track.frames+' frames':''}${needsOcr?' · requires OCR':' · fast extract'}</div>
+      </div>
+      <div class="track-output">${outName}</div>
+    `;
+
+    const cb = row.querySelector('input[type=checkbox]');
+    track.selected  = true;
+    track.checkboxEl = cb;
+    track.rowEl     = row;
+    track.outputEl  = row.querySelector('.track-output');
+    track.outName   = outName;
+    track.suffix    = suffix;
+    track.needsOcr  = needsOcr;
+
+    cb.addEventListener('change', () => {
+      track.selected = cb.checked;
+      row.classList.toggle('selected', cb.checked);
+    });
+    row.addEventListener('click', e => {
+      if (e.target === cb) return;
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change'));
+    });
+
+    entry.tracksEl.appendChild(row);
+  });
+}
+
+// ── Convert ──
+async function startConversion() {
+  if (!ffmpegReady || !outputDir || busy) return;
+
+  const toConvert = entries.filter(e => e.probed && !e.done && e.tracks.some(t => t.selected));
+  if (!toConvert.length) { actionLabel.textContent = 'No tracks selected'; return; }
+
+  busy = true; updateBtns();
+
+  let totalTracks = 0, doneTracks = 0, errorTracks = 0;
+
+  for (const entry of toConvert) {
+    const selected = entry.tracks.filter(t => t.selected);
+    totalTracks += selected.length;
+
+    entry.el.classList.add('converting');
+    setState(entry, 'converting', `Converting ${selected.length} track${selected.length!==1?'s':''}…`);
+    showProgress(entry, true);
+
+    // Write file to FS once for all tracks
+    const inName = `in_${Date.now()}.mkv`;
+    actionLabel.textContent = `Loading ${entry.file.name}…`;
+    try {
+      await ffmpeg.writeFile(inName, await _fetchFile(entry.file));
+    } catch(e) {
+      setState(entry, 'error', 'Failed to load file');
+      entry.el.classList.remove('converting');
+      entry.el.classList.add('error-entry');
+      errorTracks += selected.length;
+      continue;
+    }
+
+    for (let ti = 0; ti < selected.length; ti++) {
+      const track = selected[ti];
+      actionLabel.textContent = `${entry.file.name} — track ${ti+1}/${selected.length}`;
+      setProgressPct(entry, Math.round((ti/selected.length)*100));
+
+      try {
+        if (track.needsOcr) {
+          await convertPGS(entry, track, inName);
+        } else {
+          await extractTextSub(entry, track, inName);
+        }
+        doneTracks++;
+        track.outputEl.textContent = `✓ ${track.outName}`;
+        track.outputEl.className = 'track-output done';
+      } catch(e) {
+        console.error('Track conversion failed:', track, e);
+        track.outputEl.textContent = `✗ ${e.message}`;
+        track.outputEl.className = 'track-output error';
+        errorTracks++;
+      }
+    }
+
+    try { await ffmpeg.deleteFile(inName); } catch(e) {}
+
+    setProgressPct(entry, 100);
+    showProgress(entry, false);
+    entry.el.classList.remove('converting');
+    entry.el.classList.add('done-entry');
+    setState(entry, 'done', 'Done ✓');
+    entry.done = true;
+  }
+
+  busy = false;
+  actionLabel.textContent = '';
+  updateBtns();
+
+  summary.innerHTML = `✓ Batch complete — ${doneTracks} track${doneTracks!==1?'s':''} converted${errorTracks?`, ${errorTracks} error${errorTracks!==1?'s':''}`:''}.`;
+  summary.classList.add('visible');
+}
+
+async function extractTextSub(entry, track, inName) {
+  const ext     = (track.type === 'ass' || track.type === 'ssa') ? 'ass' : 'srt';
+  const outName = `sub_${Date.now()}.${ext}`;
+  await ffmpeg.exec(['-i', inName, '-map', `0:${track.streamIdx}`, '-c', 'copy', outName]);
+  const data = await ffmpeg.readFile(outName);
+  await ffmpeg.deleteFile(outName);
+  const text = new TextDecoder().decode(data);
+  await saveToDir(track.outName, text);
+}
+
+async function convertPGS(entry, track, inName) {
+  // Extract PNG frames from PGS stream
+  const stamp   = Date.now();
+  const imgPat  = `img_${stamp}_%04d.png`;
+  const imgRe   = new RegExp(`^img_${stamp}_\\d+\\.png$`);
+
+  // Get video resolution for ASS header
+  let probe2 = '';
+  const lh = ({message}) => { probe2 += message + '\n'; };
+  ffmpeg.on('log', lh);
+  try { await ffmpeg.exec(['-i', inName]); } catch(e) {}
+  ffmpeg.off('log', lh);
+  const dimM = probe2.match(/(\d{3,4})x(\d{3,4})/);
+  const vw   = dimM?.[1] || '1920';
+  const vh   = dimM?.[2] || '1080';
+
+  // Extract PGS frames as PNGs
+  try {
+    await ffmpeg.exec([
+      '-analyzeduration','100000000','-probesize','100000000',
+      '-i', inName,
+      '-map', `0:${track.streamIdx}`,
+      '-vsync','passthrough',
+      imgPat
+    ]);
+  } catch(e) { /* partial extraction is ok */ }
+
+  // List extracted frames
+  const allFiles = await ffmpeg.listDir('/');
+  const pngFiles = allFiles
+    .filter(f => !f.isDir && imgRe.test(f.name))
+    .map(f => f.name)
+    .sort();
+
+  if (!pngFiles.length) throw new Error('No frames extracted from PGS stream');
+
+  // Get timestamps via null muxer packet dump
+  let tsLog = '';
+  const tsH = ({message}) => { tsLog += message + '\n'; };
+  ffmpeg.on('log', tsH);
+  try {
+    await ffmpeg.exec([
+      '-analyzeduration','100000000','-probesize','100000000',
+      '-i', inName,
+      '-map', `0:${track.streamIdx}`,
+      '-f','null','-'
+    ]);
+  } catch(e) {}
+  ffmpeg.off('log', tsH);
+
+  // Parse pts_time values
+  const tsVals = [...tsLog.matchAll(/pts_time:(\d+\.?\d*)/g)].map(m => parseFloat(m[1]));
+
+  // Build ASS header
+  const assLines = [
+    '[Script Info]',
+    'ScriptType: v4.00+',
+    `PlayResX: ${vw}`,
+    `PlayResY: ${vh}`,
+    '',
+    '[V4+ Styles]',
+    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+    'Style: Default,Arial,52,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2.5,1,2,10,10,18,1',
+    '',
+    '[Events]',
+    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  ];
+
+  // Init Tesseract
+  const worker = await Tesseract.createWorker('eng', 1, { logger: ()=>{} });
+
+  const total = pngFiles.length;
+  for (let i = 0; i < total; i++) {
+    // Update progress within this track
+    setProgressPct(entry, Math.round((i / total) * 100));
+    setState(entry, 'converting', `OCR frame ${i+1}/${total}…`);
+
+    try {
+      const pngData = await ffmpeg.readFile(pngFiles[i]);
+      const url     = URL.createObjectURL(new Blob([pngData], {type:'image/png'}));
+      const result  = await worker.recognize(url);
+      URL.revokeObjectURL(url);
+
+      const text = result.data.text.trim().replace(/\n+/g, '\\N');
+      if (text) {
+        const startT = tsVals[i]   ?? (i * 2);
+        const endT   = tsVals[i+1] ?? (startT + 2);
+        assLines.push(`Dialogue: 0,${toAssTime(startT)},${toAssTime(endT)},Default,,0,0,0,,${text}`);
+      }
+    } catch(e) {
+      console.warn(`Frame ${i} OCR failed:`, e);
+    }
+
+    // Free frame from FS immediately
+    try { await ffmpeg.deleteFile(pngFiles[i]); } catch(e) {}
+  }
+
+  await worker.terminate();
+  await saveToDir(track.outName, assLines.join('\n'));
+}
+
+async function saveToDir(filename, content) {
+  const fh  = await outputDir.getFileHandle(filename, { create: true });
+  const w   = await fh.createWritable();
+  await w.write(new Blob([content], {type:'text/plain'}));
+  await w.close();
+}
+
+// ── UI helpers ──
+function setState(entry, cls, text) {
+  entry.stateEl.className = `fe-state ${cls}`;
+  entry.stateEl.textContent = text;
+}
+function showProgress(entry, show) { entry.progressEl.classList.toggle('visible', show); }
+function setProgressPct(entry, pct) { entry.progressBar.style.width = pct+'%'; }
+
+function updateBtns() {
+  const hasFiles    = entries.length > 0;
+  const hasUnprobed = entries.some(e => !e.probed);
+  const hasSelected = entries.some(e => e.probed && e.tracks.some(t => t.selected));
+  probeBtn.disabled = !ffmpegReady || !hasFiles || busy;
+  startBtn.disabled = !ffmpegReady || !outputDir || !hasSelected || busy;
+  clearBtn.disabled = busy;
+}
+
+// ── Folder picker ──
+pickFolderBtn.addEventListener('click', async () => {
+  try {
+    outputDir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    folderPath.textContent = outputDir.name;
+    folderPath.style.color = 'var(--text)';
+    updateBtns();
+  } catch(e) { if (e.name !== 'AbortError') console.error(e); }
+});
+
+// ── Drop / browse ──
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value=''; });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); addFiles(e.dataTransfer.files); });
+
+// ── Buttons ──
+probeBtn.addEventListener('click', probeAll);
+startBtn.addEventListener('click', startConversion);
+clearBtn.addEventListener('click', () => {
+  if (busy) return;
+  entries = []; fileEntries.innerHTML = '';
+  summary.classList.remove('visible');
+  actionLabel.textContent = '';
+  updateBtns();
+});
+
+// ── Init ──
+initFFmpeg();
+</script>
+</body>
+</html>
